@@ -24,4 +24,4 @@ jobs:
       - name: Sync tasks
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-        run: python sync_tasks.py
+        run: python .github/workflows/sync_tasks.py
