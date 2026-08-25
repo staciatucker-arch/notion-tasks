@@ -1,4 +1,4 @@
-Sync tasks · PY
+
 #!/usr/bin/env python3
 """
 Task Tracker sync.
@@ -375,4 +375,3 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
  
-Notifications are turned off for Claude. Enable them in System Settings to get alerts when Claude finishes a task.
