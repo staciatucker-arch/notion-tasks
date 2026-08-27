@@ -2,13 +2,26 @@ name: Task Tracker daily sync
  
 on:
   schedule:
-    # 05:00 UTC = 1am Eastern Daylight Time (midnight during winter, EST).
-    # GitHub runs cron in UTC and doesn't follow daylight saving, so the
-    # wall-clock time drifts by an hour in November. That's cosmetic here:
-    # the script resolves "today" against America/New_York itself, so it
-    # always agrees with your calendar regardless of when it fires.
-    - cron: "0 5 * * *"
- 
+    # Goal: finished before 4am Eastern, every day.
+    #
+    # GitHub's schedule is best-effort. Runs get delayed under load, often
+    # by 10-30 minutes, and are occasionally dropped altogether - so the
+    # cron time is the earliest it might start, not when it will finish.
+    # Both entries below are built around that.
+    #
+    # Primary, 2:20am EDT / 1:20am EST. Leaves 1h40m of slack before 4am
+    # even in summer, and stays well clear of the midnight date boundary.
+    - cron: "20 6 * * *"
+    #
+    # Backup 50 minutes later, 3:10am EDT / 2:10am EST, in case the first
+    # is dropped. Running twice is harmless: spawning skips dates that
+    # already exist and cleanup skips rows already archived, so a second
+    # run finds nothing to do and exits in about 13 seconds.
+    - cron: "10 7 * * *"
+    #
+    # Both minutes are deliberately off the hour. :00 is the most contended
+    # minute on the whole platform and the likeliest to be queued.
+
   # Lets you trigger a run by hand from the Actions tab.
   workflow_dispatch:
  
