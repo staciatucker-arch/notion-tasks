@@ -1,42 +1,77 @@
 name: Task Tracker daily sync
- 
+
 on:
   schedule:
-    # Goal: finished before 4am Eastern, every day.
+    # The useful window, and why it's the same in both seasons.
     #
-    # GitHub's schedule is best-effort. Runs get delayed under load, often
-    # by 10-30 minutes, and are occasionally dropped altogether - so the
-    # cron time is the earliest it might start, not when it will finish.
-    # Both entries below are built around that.
+    # The script resolves "today" against America/New_York at runtime, so a
+    # run is only useful once the Eastern date has already turned over. That
+    # sets a hard floor at midnight Eastern. The ceiling is whenever you
+    # actually look at the Today view - call it 6am Eastern.
     #
-    # Primary, 2:20am EDT / 1:20am EST. Leaves 1h40m of slack before 4am
-    # even in summer, and stays well clear of the midnight date boundary.
-    - cron: "20 6 * * *"
+    # GitHub cron is fixed UTC and does not follow daylight saving, so that
+    # Eastern window slides an hour underneath it twice a year:
     #
-    # Backup 50 minutes later, 3:10am EDT / 2:10am EST, in case the first
-    # is dropped. Running twice is harmless: spawning skips dates that
-    # already exist and cleanup skips rows already archived, so a second
-    # run finds nothing to do and exits in about 13 seconds.
-    - cron: "10 7 * * *"
+    #   EDT (summer, UTC-4):  midnight -> 6am  ==  04:00 -> 10:00 UTC
+    #   EST (winter, UTC-5):  midnight -> 6am  ==  05:00 -> 11:00 UTC
     #
-    # Both minutes are deliberately off the hour. :00 is the most contended
-    # minute on the whole platform and the likeliest to be queued.
+    # Every entry below sits in the OVERLAP, 05:00-10:00 UTC, which is inside
+    # the window in both seasons. Nothing here needs revisiting in November.
+    # An entry earlier than 05:00 would fire before midnight Eastern in
+    # winter and compute the previous day - that is the trap this avoids.
+    #
+    # Six entries rather than two because GitHub's scheduler is best-effort.
+    # Observed delays on this repo have run six to twelve hours, far past the
+    # 10-30 minutes the docs imply, and delayed crons tend to be released in
+    # a clump when the queue drains. Spreading attempts across the window
+    # raises the odds that one lands while it still helps. Extra runs are
+    # nearly free: spawning skips dates that already exist and cleanup skips
+    # rows already archived, so a redundant run exits in about 13 seconds.
+    #
+    # A late run is never *wrong* - it recomputes the Eastern date when it
+    # starts, and Daily grace 0 means one pass clears everything dated before
+    # today whether or not earlier runs happened. Late only means late.
+    #
+    #                      EDT       EST
+    - cron: "10 5 * * *"  # 1:10am   12:10am
+    - cron: "20 6 * * *"  # 2:20am    1:20am
+    - cron: "10 7 * * *"  # 3:10am    2:10am
+    - cron: "10 8 * * *"  # 4:10am    3:10am
+    - cron: "10 9 * * *"  # 5:10am    4:10am
+    - cron: "50 9 * * *"  # 5:50am    4:50am
+    #
+    # Minutes are deliberately off the hour. :00 is the most contended minute
+    # on the platform and the likeliest to be queued behind everything else.
 
   # Lets you trigger a run by hand from the Actions tab.
   workflow_dispatch:
- 
+
+# With six entries, two delayed runs can be released close together. Two
+# copies of the script running at once would each read the database, each
+# find the same dates missing, and each create them - duplicates, which is
+# the exact problem this job exists to prevent. Queue them instead: the
+# second waits, then starts, finds nothing to do, and exits.
+#
+# cancel-in-progress stays false on purpose. Cancelling mid-run could stop
+# the script between creating pages and archiving them.
+concurrency:
+  group: task-tracker-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # A hung run would otherwise hold the concurrency group and block every
+    # later attempt for the rest of the day. The job normally takes ~15s.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
- 
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
- 
+
       - name: Sync tasks
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         run: python sync_tasks.py
- 
